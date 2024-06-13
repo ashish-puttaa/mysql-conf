@@ -1,0 +1,57 @@
+#!/bin/bash
+
+set -euo pipefail
+
+declare -r scriptDir="$(dirname "$(realpath "$0")")"
+declare -r custom_dir="$scriptDir/.."
+
+declare -r id="${1:-}"
+declare -r port="${2:-}"
+
+declare -r base_conf_file="$custom_dir/base/base.cnf"
+declare -r conf_file="$custom_dir/config/$id.cnf"
+declare -r run_dir="$custom_dir/run/$id"
+
+echo -e "Script Dir: $scriptDir\n"
+
+if [ -z "$id" ]; then
+    echo "Error: No identifier provided."
+    echo "Usage: create [ID] [PORT]"
+    exit 1
+fi
+
+if [ -z "$port" ]; then
+    echo "Error: No port provided."
+    echo "Usage: create [ID] [PORT]"
+    exit 1
+fi
+
+if [ ! -e "$base_conf_file" ]; then
+    echo "Error. Base configuration file missing at: $base_conf_file"
+    exit
+fi
+
+if [ -e "$conf_file" ]; then
+    echo "Error. Configuration file for $id already exists at: $conf_file"
+    exit
+fi
+
+if [ -e "$run_dir" ]; then
+    echo "Error. Run directory for $id already exists at: $run_dir"
+    exit
+fi
+
+
+cp "$base_conf_file" "$conf_file"
+
+# Replace placeholders
+sed -i "s~##DIR##~$id~g" "$conf_file"
+sed -i "s~##PORT##~$port~g" "$conf_file"
+
+mkdir "$run_dir"
+
+sudo chown -R mysql:mysql "$conf_file" "$run_dir"
+sudo chmod -R 775 "$conf_file"
+sudo chmod -R 777 "$run_dir"
+
+echo "Created new configuration for $id at: $conf_file"

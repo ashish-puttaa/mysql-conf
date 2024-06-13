@@ -1,0 +1,165 @@
+#!/bin/bash
+
+set -euo pipefail
+
+declare -r scriptDir="$(dirname "$(realpath "$0")")"
+declare -r base_dir="$scriptDir/../.."
+declare -r custom_dir="$scriptDir/.."
+
+declare -r id="${1:-}"
+declare -r command="${2:-}"
+
+declare -r conf_file="$custom_dir/config/$id.cnf"
+declare -r run_dir="$custom_dir/run/$id"
+declare -r pid_file="$run_dir/my.pid"
+declare -r log_file="$run_dir/my.log"
+
+declare -r password="test@123"
+
+if [ -z "$id" ]; then
+    echo "Error: No identifier provided."
+    echo "Usage: script [ID] [ init | start | connect | kill | reinit | remove | pwd | log ]"
+    exit 1
+fi
+
+if [ -z "$command" ]; then
+    echo "Error: No command provided."
+    echo "Usage: script [ID] [ init | start | connect | kill | reinit | remove | pwd | log ]"
+    exit 1
+fi
+
+if [ ! -e "$conf_file" ]; then
+    echo "Error. Configuration file does not exist for $id at: $conf_file"
+    exit
+fi
+
+if [ ! -e "$run_dir" ]; then
+    echo "Error. Run directory does not exist for $id at: $run_dir"
+    exit
+fi
+
+function set_permissions()
+{
+    # sudo chown -R ash:ash "$custom_dir/scripts"
+    sudo chown -R mysql:mysql "$conf_file" "$run_dir"
+    sudo chmod -R 775 "$conf_file"
+    sudo chmod -R 777 "$run_dir"
+}
+
+function mysql_propped()
+{
+    # cat "$log_file" | grep "temporary password is generated "
+    # echo -e "\n$base_dir/bin/mysql --socket=$run_dir/my.sock --port=$port -u root mysql $@"
+
+    declare -r port=$(grep -oP '^\s*port\s*=\s*\K\d+' "$conf_file")
+    "$base_dir/bin/mysql" --socket="$run_dir/my.sock" --port=$port -u root mysql "$@"
+}
+
+function init_instance()
+{
+    set_permissions
+    "$base_dir/bin/mysqld" --defaults-file="$conf_file" --basedir="$base_dir" --initialize
+    set_permissions
+
+    start_instance
+    sleep 1s
+
+    local autogen_pass=$(grep "temporary password is generated" "$log_file" | sed -n "s~.*temporary password is generated.*: ~~p")
+    echo "Autogenrated password: $autogen_pass"
+
+    local pr_statements="ALTER USER 'root'@'localhost' IDENTIFIED BY '$password'; GRANT ALL ON *.* TO 'root'@'%' IDENTIFIED BY '$password'; FLUSH PRIVILEGES;"
+    local create_statements="CREATE DATABASE IF NOT EXISTS sasdb;CREATE DATABASE IF NOT EXISTS jbossdb;"
+    local mode_statements="SET @@sql_mode=TRADITIONAL; SET @@GLOBAL.sql_mode=TRADITIONAL; SET @@SESSION.sql_mode=TRADITIONAL;"
+
+    mysql_propped --password=$autogen_pass --connect-expired-password -e "$pr_statements $create_statements $mode_statements"
+    echo -e "\nReset password to: $password"
+
+    kill_instance
+}
+
+function start_instance()
+{
+    "$base_dir/bin/mysqld" --defaults-file="$conf_file" --basedir="$base_dir" &
+    echo "Started mysql instance for $id with pid: $!"
+}
+
+function kill_instance()
+{
+    if [ ! -e "$pid_file" ]; then
+        echo "Error. PID file not found for $id at: $pid_file"
+        exit
+    fi
+
+    declare -r pid="$(cat "$run_dir/my.pid")"
+    echo "Killing mysql instance for $id with pid: $pid"
+    kill "$pid"
+}
+
+function reinit_instance()
+{
+    local drop_sql_query="SELECT COALESCE(GROUP_CONCAT(CONCAT('DROP DATABASE ', SCHEMA_NAME, ';') SEPARATOR ''), '') AS Query
+FROM INFORMATION_SCHEMA.SCHEMATA
+WHERE SCHEMA_NAME LIKE 'db%'
+   OR SCHEMA_NAME = 'sasdb'
+   OR SCHEMA_NAME = 'jbossdb';"
+
+	local drop_statements=$(mysql_propped --password --skip-column-names --silent -e "$drop_sql_query")
+	local create_statements="CREATE DATABASE IF NOT EXISTS sasdb;CREATE DATABASE IF NOT EXISTS jbossdb;"
+
+	echo -e "\n$drop_statements" | tr ';' '\n'
+	echo -e "\n$create_statements" | tr ';' '\n'
+
+	mysql_propped -e "$drop_statements $create_statements" --password
+    echo "Reinitialize the database successfully for $id"
+}
+
+function remove_instance()
+{
+    if [ -e "$pid_file" ]; then
+        kill_instance
+    fi
+
+    sudo rm -rf "$run_dir/my.data"
+    echo "Removed data directory at: $run_dir/my.data"
+
+    sudo rm -rf "$log_file"
+    echo "Removed log file at: $log_file"
+
+    sudo rm -rf "$run_dir"
+    echo "Removed: $run_dir"
+
+    sudo rm -rf "$conf_file"
+    echo "Removed conf file at: $conf_file"
+}
+
+case "$command" in
+    init)
+        init_instance
+        ;;
+    start)
+        start_instance
+        ;;
+    connect)
+        mysql_propped -p
+        ;;
+    kill)
+        kill_instance
+        ;;
+    reinit)
+        reinit_instance
+        ;;
+    remove)
+        remove_instance
+        ;;
+    pwd)
+        echo "$run_dir"
+        ;;
+    log)
+        echo "$log_file"
+        ;;
+    *)
+        echo "Error. Unknown command: $command"
+        echo "Usage: script [ID] [ init | start | connect | kill | reinit | remove | pwd | log ]"
+        exit 1
+        ;;
+esac
