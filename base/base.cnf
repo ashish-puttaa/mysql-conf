@@ -32,7 +32,8 @@ pid-file	= /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.pid
 socket		= /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.sock
 datadir		= /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.data
 log-error	= /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.log
-port        	= ##PORT##
+port        = ##PORT##
+sql_mode    = TRADITIONAL
 # secure_file_priv = /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.files
 
 # By default we only accept connections from localhost
