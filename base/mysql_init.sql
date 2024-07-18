@@ -1,0 +1,3 @@
+SET @@sql_mode=TRADITIONAL;
+SET @@GLOBAL.sql_mode=TRADITIONAL;
+SET @@SESSION.sql_mode=TRADITIONAL;

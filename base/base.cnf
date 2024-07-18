@@ -34,10 +34,19 @@ datadir		= /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.data
 log-error	= /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.log
 port        = ##PORT##
 sql_mode    = TRADITIONAL
-# secure_file_priv = /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.files
+init-file   = /home/ash/tools/mysql/5.7.44/custom/base/mysql_init.sql
 
+# secure_file_priv = /home/ash/tools/mysql/5.7.44/custom/run/##DIR##/my.files
 # By default we only accept connections from localhost
 bind-address	= 127.0.0.1
 # Disabling symbolic-links is recommended to prevent assorted security risks
 symbolic-links=0
 
+collation-server     = utf8_general_ci
+character-set-server = utf8
+
+[client]
+default-character-set=utf8
+
+[mysql]
+default-character-set=utf8
